@@ -1,0 +1,5 @@
+{
+  "name": "Online Tracks Bouncer",
+  "description": "Free online multitrack audio mixer. Bounce stems, merge WAV/MP3 files, and export your mix directly in the browser.",
+  "requestFramePermissions": []
+}
