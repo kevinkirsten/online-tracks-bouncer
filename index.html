@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Primary Meta Tags -->
+    <title>Online Tracks Bouncer - Merge & Bounce Audio Files</title>
+    <meta name="title" content="Online Tracks Bouncer - Merge & Bounce Audio Files" />
+    <meta name="description" content="The easiest way to bounce tracks online. Merge WAV, MP3, and audio stems together instantly. Adjust volume levels and export your mix directly in your browser. No signup required." />
+    <meta name="keywords" content="online tracks bouncer, bounce tracks online, bounce waves online, bounce mp3 files together, merge audio files, multitrack mixer online, combine audio stems, free audio bouncer, wav mixer online" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Online Tracks Bouncer - Merge & Bounce Audio Files" />
+    <meta property="og:description" content="Drag, drop, mix, and bounce. The free online tool to combine multiple audio tracks into one high-quality file." />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:title" content="Online Tracks Bouncer - Merge & Bounce Audio Files" />
+    <meta property="twitter:description" content="Drag, drop, mix, and bounce. The free online tool to combine multiple audio tracks into one high-quality file." />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              daw: {
+                bg: '#121214',
+                panel: '#1e1e24',
+                border: '#2a2a35',
+                accent: '#646cff',
+                text: '#ececf1',
+                muted: '#8b8b99'
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      /* Custom scrollbar for a DAW-like feel (Cross-browser) */
+      :root {
+        scrollbar-width: thin;
+        scrollbar-color: #2a2a35 #121214;
+      }
+      
+      /* Webkit (Chrome/Safari/Edge) */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #121214;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #2a2a35;
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #646cff;
+      }
+    </style>
+    <!-- Load LameJS via script tag for better compatibility with its legacy UMD structure -->
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+
+<link rel="stylesheet" href="/index.css">
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "uuid": "https://esm.sh/uuid@^13.0.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "wavesurfer.js": "https://esm.sh/wavesurfer.js@^7.12.1"
+  }
+}
+</script>
+  <script type="module" crossorigin src="/online-tracks-bouncer/assets/index-D4PQ6ESv.js"></script>
+</head>
+  <body class="bg-daw-bg text-daw-text antialiased overflow-hidden">
+    <div id="root"></div>
+</body>
+</html>
