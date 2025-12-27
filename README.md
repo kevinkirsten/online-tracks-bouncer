@@ -8,5 +8,5 @@ Free online multitrack audio mixer. Bounce stems, merge WAV/MP3 files, and expor
 
 1. Install dependencies:
    `npm install`
-2Run the app:
+2. Run the app:
    `npm run dev`
