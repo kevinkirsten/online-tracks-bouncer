@@ -7,6 +7,9 @@ import { MasterMeter } from './components/MasterMeter';
 import { GlobalTimeline } from './components/GlobalTimeline';
 import { bounceTracks, estimateFileSize } from './services/audioService';
 import { HelpModal } from './components/HelpModal';
+import { Transposer, Note } from './components/Transposer';
+import { SoundTouchNode } from '@soundtouchjs/audio-worklet';
+import soundtouchProcessorUrl from '@soundtouchjs/audio-worklet/processor?url';
 import WaveSurfer from 'wavesurfer.js';
 
 const App: React.FC = () => {
@@ -18,18 +21,23 @@ const App: React.FC = () => {
     isExporting: false,
   });
   const [masterVolume, setMasterVolume] = useState(1.0);
-  
+
+  // Pitch shift state (global transposer)
+  const [pitchSemitones, setPitchSemitones] = useState(0);
+  const [referenceKey, setReferenceKey] = useState<Note | null>(null);
+
   // UI State
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [showRemaining, setShowRemaining] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  
+
   // Audio Context for Live Visualization (Mixing Engine)
   const audioContextRef = useRef<AudioContext | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
   const analyserLRef = useRef<AnalyserNode | null>(null);
   const analyserRRef = useRef<AnalyserNode | null>(null);
-  
+  const soundTouchNodeRef = useRef<SoundTouchNode | null>(null);
+
   const [isAudioContextReady, setIsAudioContextReady] = useState(false);
   
   // Bounce Menu State
@@ -43,26 +51,60 @@ const App: React.FC = () => {
     const splitter = ctx.createChannelSplitter(2);
     const analyserL = ctx.createAnalyser();
     const analyserR = ctx.createAnalyser();
-    
+
     analyserL.fftSize = 256;
     analyserR.fftSize = 256;
-
-    masterGain.connect(splitter);
-    splitter.connect(analyserL, 0);
-    splitter.connect(analyserR, 1);
-    masterGain.connect(ctx.destination);
 
     audioContextRef.current = ctx;
     masterGainRef.current = masterGain;
     analyserLRef.current = analyserL;
     analyserRRef.current = analyserR;
-    
+
+    // Initial wiring (without pitch shifter): masterGain → splitter+analysers → destination
+    masterGain.connect(splitter);
+    splitter.connect(analyserL, 0);
+    splitter.connect(analyserR, 1);
+    masterGain.connect(ctx.destination);
+
+    // Register SoundTouch processor and insert pitch-shift node into the chain.
+    // We rewire to: masterGain → soundTouchNode → splitter+analysers + destination
+    let cancelled = false;
+    (async () => {
+      try {
+        await SoundTouchNode.register(ctx, soundtouchProcessorUrl);
+        if (cancelled) return;
+        const stNode = new SoundTouchNode({ context: ctx });
+        stNode.playbackRate.value = 1.0;
+        stNode.pitch.value = 1.0;
+        stNode.pitchSemitones.value = 0;
+
+        // Rewire: disconnect masterGain from old sinks, route through stNode
+        masterGain.disconnect();
+        masterGain.connect(stNode);
+        stNode.connect(splitter);
+        stNode.connect(ctx.destination);
+
+        soundTouchNodeRef.current = stNode;
+      } catch (err) {
+        console.warn('Failed to initialize SoundTouch pitch shifter — pitch controls disabled', err);
+      }
+    })();
+
     setIsAudioContextReady(true);
 
     return () => {
-        ctx.close();
+      cancelled = true;
+      ctx.close();
     };
   }, []);
+
+  // Sync pitchSemitones to the SoundTouch node
+  useEffect(() => {
+    const stNode = soundTouchNodeRef.current;
+    const ctx = audioContextRef.current;
+    if (!stNode || !ctx) return;
+    stNode.pitchSemitones.setTargetAtTime(pitchSemitones, ctx.currentTime, 0.01);
+  }, [pitchSemitones]);
 
   // Sync Master Volume
   useEffect(() => {
@@ -229,12 +271,24 @@ const App: React.FC = () => {
     });
   };
 
+  const handleClearAll = () => {
+    tracks.forEach(t => {
+      if (t.wavesurfer) t.wavesurfer.stop();
+      URL.revokeObjectURL(t.url);
+    });
+    maxDurationRef.current = 0;
+    setTracks([]);
+    setPlayback({ isPlaying: false, currentTime: 0, duration: 0, isExporting: false });
+    setPitchSemitones(0);
+    setReferenceKey(null);
+  };
+
   const handleExport = async (format: 'wav' | 'mp3') => {
     setIsBounceMenuOpen(false); // Close menu immediately
     if (tracks.length === 0) return;
     setPlayback(prev => ({ ...prev, isExporting: true }));
     try {
-      const blob = await bounceTracks(tracks, masterVolume, format);
+      const blob = await bounceTracks(tracks, masterVolume, format, pitchSemitones);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -336,6 +390,13 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-4">
+            <Transposer
+                pitchSemitones={pitchSemitones}
+                referenceKey={referenceKey}
+                onPitchChange={setPitchSemitones}
+                onReferenceKeyChange={setReferenceKey}
+            />
+
             <div className="flex items-center bg-daw-bg rounded-lg p-1 border border-daw-border">
                 <button onClick={stop} className="p-1.5 hover:text-red-400 transition-colors" title="Stop">
                     <Square size={16} fill="currentColor" />
@@ -459,8 +520,8 @@ const App: React.FC = () => {
             <div className={`max-w-7xl mx-auto w-full pb-20 transition-all duration-300 ${isDraggingFile ? 'opacity-50 blur-sm scale-[0.99]' : ''}`}>
                 <div className="flex items-center justify-between mb-2 px-1">
                     <h3 className="text-xs uppercase tracking-wider text-daw-muted font-bold">Tracks ({tracks.length})</h3>
-                    <button onClick={() => setTracks([])} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
-                        <Trash2 size={12} /> Clear
+                    <button onClick={handleClearAll} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1" title="Limpa tudo: tracks, pitch e key">
+                        <Trash2 size={12} /> Clear all
                     </button>
                 </div>
                 

@@ -1,4 +1,6 @@
 import { AudioTrack } from '../types';
+import { processOffline } from '@soundtouchjs/audio-worklet';
+import soundtouchProcessorUrl from '@soundtouchjs/audio-worklet/processor?url';
 
 // lamejs is loaded via <script> tag in index.html for the main thread, 
 // but for the worker we need to import it explicitly inside the worker scope.
@@ -226,7 +228,7 @@ export const estimateFileSize = (duration: number, format: 'wav' | 'mp3'): strin
   return `${mb.toFixed(1)} MB`;
 };
 
-export const bounceTracks = async (tracks: AudioTrack[], masterVolume: number = 1.0, format: 'wav' | 'mp3' = 'wav'): Promise<Blob> => {
+export const bounceTracks = async (tracks: AudioTrack[], masterVolume: number = 1.0, format: 'wav' | 'mp3' = 'wav', pitchSemitones: number = 0): Promise<Blob> => {
   // 1. Determine max duration
   let maxDuration = 0;
   const activeTracks = tracks.filter(t => !t.isMuted);
@@ -244,8 +246,16 @@ export const bounceTracks = async (tracks: AudioTrack[], masterVolume: number = 
     if (!buffer) {
        buffer = await loadAudioBuffer(track.file, tempCtx);
     }
-    
+
     if (buffer) {
+      // Apply pitch shift offline (preserves tempo) before mixing
+      if (pitchSemitones !== 0) {
+        buffer = await processOffline({
+          input: buffer,
+          processorUrl: soundtouchProcessorUrl,
+          pitchSemitones,
+        });
+      }
       if (buffer.duration > maxDuration) maxDuration = buffer.duration;
       buffers.push({ buffer, volume: track.volume });
     }
