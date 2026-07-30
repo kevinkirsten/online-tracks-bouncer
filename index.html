@@ -23,48 +23,6 @@
     <meta property="twitter:title" content="Online Tracks Bouncer - Merge & Bounce Audio Files" />
     <meta property="twitter:description" content="Drag, drop, mix, and bounce. The free online tool to combine multiple audio tracks into one high-quality file." />
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              daw: {
-                bg: '#121214',
-                panel: '#1e1e24',
-                border: '#2a2a35',
-                accent: '#646cff',
-                text: '#ececf1',
-                muted: '#8b8b99'
-              }
-            }
-          }
-        }
-      }
-    </script>
-    <style>
-      /* Custom scrollbar for a DAW-like feel (Cross-browser) */
-      :root {
-        scrollbar-width: thin;
-        scrollbar-color: #2a2a35 #121214;
-      }
-      
-      /* Webkit (Chrome/Safari/Edge) */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #121214;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #2a2a35;
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #646cff;
-      }
-    </style>
     <!-- Load LameJS via script tag for better compatibility with its legacy UMD structure -->
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
 </head>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Drum, Minus, Plus, Wand2, Loader2 } from 'lucide-react';
 import { ClickSignature, CLICK_BASES } from '../services/clickService';
 import type { TempoResult } from '../services/analysisService';
@@ -36,6 +36,17 @@ export const ClickTrackModal: React.FC<ClickTrackModalProps> = ({
   const [isDetecting, setIsDetecting] = useState(false);
   const [analysis, setAnalysis] = useState<TempoResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Escape closes the dialog, but not while work is in flight. Registered
+  // before the early return so the hook order stays stable.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isGenerating && !isDetecting) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, isGenerating, isDetecting, onClose]);
 
   if (!isOpen) return null;
 

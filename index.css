@@ -1,0 +1,36 @@
+@import 'tailwindcss';
+
+/*
+ * DAW palette. In Tailwind v4 the theme lives in CSS: each `--color-daw-*`
+ * variable generates the matching utilities (bg-daw-panel, text-daw-muted,
+ * border-daw-border, …) exactly as the old CDN `tailwind.config` block did.
+ */
+@theme {
+  --color-daw-bg: #121214;
+  --color-daw-panel: #1e1e24;
+  --color-daw-border: #2a2a35;
+  --color-daw-accent: #646cff;
+  --color-daw-text: #ececf1;
+  --color-daw-muted: #8b8b99;
+}
+
+/* Custom scrollbar for a DAW-like feel (cross-browser) */
+:root {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a35 #121214;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #121214;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a35;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #646cff;
+}
