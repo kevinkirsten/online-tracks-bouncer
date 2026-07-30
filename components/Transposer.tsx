@@ -85,15 +85,21 @@ export const Transposer: React.FC<TransposerProps> = ({
         <Minus size={14} />
       </button>
 
+      {/*
+        The spinner is positioned over the padding rather than placed in the
+        flow: as a flex sibling it ate into the fixed width and pushed the
+        label onto a second line. This way the readout never moves or wraps,
+        whether it is rendering or not.
+      */}
       <span
         onClick={reset}
-        className={`font-mono text-xs w-12 text-center cursor-pointer select-none flex items-center justify-center gap-1 ${
+        className={`relative font-mono text-xs w-16 text-center cursor-pointer select-none flex items-center justify-center ${
           isActive ? 'text-daw-accent font-bold' : 'text-daw-muted'
         } hover:text-white`}
         title={isRendering ? 'Rendering the shifted audio…' : 'Click to reset (0 st)'}
       >
-        {isRendering && <Loader2 size={10} className="animate-spin flex-shrink-0" />}
-        {pitchLabel}
+        {isRendering && <Loader2 size={10} className="absolute left-0 animate-spin" />}
+        <span className="whitespace-nowrap">{pitchLabel}</span>
       </span>
 
       <button
