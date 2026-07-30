@@ -1,6 +1,5 @@
 import { AudioTrack } from '../types';
-import { processOffline } from '@soundtouchjs/audio-worklet';
-import soundtouchProcessorUrl from '@soundtouchjs/audio-worklet/processor?url';
+import { renderPitched } from './pitchService';
 
 // lamejs is loaded via <script> tag in index.html for the main thread, 
 // but for the worker we need to import it explicitly inside the worker scope.
@@ -67,7 +66,7 @@ self.onmessage = function(e) {
 `;
 
 // Helper to convert an AudioBuffer to a WAV Blob
-function audioBufferToWav(buffer: AudioBuffer, opt?: any): Blob {
+export function audioBufferToWav(buffer: AudioBuffer, opt?: any): Blob {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const format = opt?.float32 ? 3 : 1;
@@ -91,11 +90,12 @@ async function audioBufferToMp3(buffer: AudioBuffer): Promise<Blob> {
     const workerUrl = URL.createObjectURL(blob);
     const worker = new Worker(workerUrl);
 
-    // Prepare data
+    // Prepare data. Copy before transferring — transferring the channel data
+    // directly would detach the AudioBuffer's own storage.
     const channels = buffer.numberOfChannels;
     const sampleRate = buffer.sampleRate;
-    const samplesL = buffer.getChannelData(0);
-    const samplesR = channels > 1 ? buffer.getChannelData(1) : new Float32Array(samplesL);
+    const samplesL = new Float32Array(buffer.getChannelData(0));
+    const samplesR = channels > 1 ? new Float32Array(buffer.getChannelData(1)) : new Float32Array(samplesL);
 
     worker.onmessage = (e) => {
       if (e.data.error) {
@@ -204,23 +204,15 @@ function writeFloat32(output: DataView, offset: number, input: Float32Array) {
   }
 }
 
-export const loadAudioBuffer = async (blob: Blob, audioContext: AudioContext): Promise<AudioBuffer> => {
-  const arrayBuffer = await blob.arrayBuffer();
-  return await audioContext.decodeAudioData(arrayBuffer);
-};
-
-export const estimateFileSize = (duration: number, format: 'wav' | 'mp3'): string => {
+export const estimateFileSize = (duration: number, format: 'wav' | 'mp3', sampleRate = 44100): string => {
   if (duration <= 0) return '0 MB';
 
   let bytes = 0;
   if (format === 'wav') {
-    // 44.1kHz * 16-bit (2 bytes) * 2 channels
-    bytes = 44100 * 2 * 2 * duration; 
-    // Add header size (minimal)
-    bytes += 44;
+    // sampleRate * 16-bit (2 bytes) * 2 channels + header
+    bytes = sampleRate * 2 * 2 * duration + 44;
   } else {
-    // MP3 320kbps
-    // 320,000 bits / 8 = 40,000 bytes per second
+    // MP3 320 kbps → 40,000 bytes per second
     bytes = 40000 * duration;
   }
 
@@ -228,72 +220,79 @@ export const estimateFileSize = (duration: number, format: 'wav' | 'mp3'): strin
   return `${mb.toFixed(1)} MB`;
 };
 
-export const bounceTracks = async (tracks: AudioTrack[], masterVolume: number = 1.0, format: 'wav' | 'mp3' = 'wav', pitchSemitones: number = 0): Promise<Blob> => {
-  // 1. Determine max duration
-  let maxDuration = 0;
-  const activeTracks = tracks.filter(t => !t.isMuted);
+export interface BounceResult {
+  blob: Blob;
+  /** Peak sample of the mix. Above 1.0 means the export clipped. */
+  peak: number;
+}
+
+/**
+ * Render the session to a single file.
+ *
+ * Pitch shifting goes through the same `renderPitched` cache the preview uses,
+ * so a bounce sounds exactly like what was playing (and is nearly free when the
+ * shift was already auditioned).
+ */
+export const bounceTracks = async (
+  tracks: AudioTrack[],
+  masterVolume: number = 1.0,
+  format: 'wav' | 'mp3' = 'wav',
+  pitchSemitones: number = 0,
+): Promise<BounceResult> => {
+  const activeTracks = tracks.filter((t) => !t.isMuted && t.status === 'ready' && t.audioBuffer);
 
   if (activeTracks.length === 0) {
-    throw new Error("No tracks to export (or all are muted).");
+    throw new Error('Nothing to export — every track is muted or still loading.');
   }
 
-  // We need the audio buffers to know the duration
-  const tempCtx = new AudioContext();
-  const buffers: { buffer: AudioBuffer; volume: number }[] = [];
+  // 1. Resolve the buffer each track actually contributes.
+  const parts: { buffer: AudioBuffer; volume: number }[] = [];
+  let maxDuration = 0;
 
   for (const track of activeTracks) {
-    let buffer = track.audioBuffer;
-    if (!buffer) {
-       buffer = await loadAudioBuffer(track.file, tempCtx);
-    }
+    // Click tracks are never pitch-shifted — that is the point of the flag.
+    const buffer =
+      pitchSemitones !== 0 && !track.isClick
+        ? await renderPitched(track.audioBuffer!, pitchSemitones, track.id)
+        : track.audioBuffer!;
 
-    if (buffer) {
-      // Apply pitch shift offline (preserves tempo) before mixing
-      if (pitchSemitones !== 0) {
-        buffer = await processOffline({
-          input: buffer,
-          processorUrl: soundtouchProcessorUrl,
-          pitchSemitones,
-        });
-      }
-      if (buffer.duration > maxDuration) maxDuration = buffer.duration;
-      buffers.push({ buffer, volume: track.volume });
-    }
+    if (buffer.duration > maxDuration) maxDuration = buffer.duration;
+    parts.push({ buffer, volume: track.volume });
   }
 
-  tempCtx.close();
-
-  // 2. Create Offline Context
-  const sampleRate = 44100; 
+  // 2. Mix offline at the source sample rate (no needless resampling).
+  const sampleRate = parts[0].buffer.sampleRate;
   const length = Math.ceil(maxDuration * sampleRate);
   const offlineCtx = new OfflineAudioContext(2, length, sampleRate);
 
-  // Create Master Gain
   const masterGainNode = offlineCtx.createGain();
   masterGainNode.gain.value = masterVolume;
   masterGainNode.connect(offlineCtx.destination);
 
-  // 3. Schedule Sources
-  buffers.forEach(({ buffer, volume }) => {
+  for (const { buffer, volume } of parts) {
     const source = offlineCtx.createBufferSource();
     source.buffer = buffer;
-    
+
     const trackGain = offlineCtx.createGain();
     trackGain.gain.value = volume;
 
     source.connect(trackGain);
     trackGain.connect(masterGainNode);
-    
     source.start(0);
-  });
+  }
 
-  // 4. Render
   const renderedBuffer = await offlineCtx.startRendering();
 
-  // 5. Convert to format
-  if (format === 'mp3') {
-    return await audioBufferToMp3(renderedBuffer);
-  } else {
-    return audioBufferToWav(renderedBuffer);
+  // 3. Report clipping so the UI can warn instead of silently distorting.
+  let peak = 0;
+  for (let ch = 0; ch < renderedBuffer.numberOfChannels; ch++) {
+    const data = renderedBuffer.getChannelData(ch);
+    for (let i = 0; i < data.length; i++) {
+      const a = Math.abs(data[i]);
+      if (a > peak) peak = a;
+    }
   }
+
+  const blob = format === 'mp3' ? await audioBufferToMp3(renderedBuffer) : audioBufferToWav(renderedBuffer);
+  return { blob, peak };
 };

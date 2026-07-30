@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Upload, Download, ArrowUpDown, MousePointer2, Clock, Music, Sliders } from 'lucide-react';
+import { X, Upload, Download, ArrowUpDown, Clock, Music, Sliders, Drum } from 'lucide-react';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -90,8 +90,38 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 <div>
                     <h3 className="font-bold text-daw-text mb-1">4. Playback & Navigation</h3>
                     <ul className="text-sm text-daw-muted space-y-2 list-disc pl-4">
-                        <li>Click anywhere on the bottom <strong>Global Timeline</strong> to jump to that part of the song.</li>
+                        <li>Click or drag on any <strong>waveform</strong>, or on the bottom <strong>Global Timeline</strong>, to jump to that spot. Every track follows in sample-accurate sync.</li>
                         <li>Click the <strong>Timer</strong> in the bottom-left corner to toggle between <em>Elapsed Time</em> and <em>Remaining Time</em>.</li>
+                    </ul>
+                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                        {[
+                            ['Space', 'Play / pause'],
+                            ['Home', 'Back to start'],
+                            ['Enter', 'Stop'],
+                            ['← / →', 'Nudge 5 seconds'],
+                            ['Shift + ← / →', 'Nudge 1 second'],
+                        ].map(([key, label]) => (
+                            <div key={key} className="flex items-center gap-2">
+                                <kbd className="bg-daw-bg border border-daw-border rounded px-1.5 py-0.5 font-mono text-[10px] text-daw-text whitespace-nowrap">{key}</kbd>
+                                <span className="text-daw-muted">{label}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* Section 5: Click & Pitch */}
+            <div className="flex gap-4">
+                <div className="flex-shrink-0 w-10 h-10 bg-daw-bg rounded-lg flex items-center justify-center border border-daw-border text-amber-400">
+                    <Drum size={20} />
+                </div>
+                <div>
+                    <h3 className="font-bold text-daw-text mb-1">5. Click Track & Transposing</h3>
+                    <ul className="text-sm text-daw-muted space-y-2 list-disc pl-4">
+                        <li><strong className="text-daw-text">Add click track</strong> generates a metronome for the whole session. Hit <strong>Detect tempo from tracks</strong> and it analyses your stems to find the BPM and where beat 1 lands.</li>
+                        <li>If the detected tempo feels half or double speed, use the <strong className="font-mono">÷2</strong> / <strong className="font-mono">×2</strong> buttons.</li>
+                        <li>Fine-tune the click with the <strong>offset</strong> field on the track itself — it updates instantly, even while playing.</li>
+                        <li>The <strong>Key / semitone</strong> control at the top transposes everything without changing the tempo. Tracks flagged with <Drum size={11} className="inline mx-0.5" /> are left alone, so your click keeps hitting exactly where it did.</li>
                     </ul>
                 </div>
             </div>
@@ -102,7 +132,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                     <Download size={20} />
                 </div>
                 <div>
-                    <h3 className="font-bold text-daw-text mb-1">5. Bounce & Export</h3>
+                    <h3 className="font-bold text-daw-text mb-1">6. Bounce & Export</h3>
                     <p className="text-sm text-daw-muted leading-relaxed mb-2">
                         Click the <strong>Bounce</strong> button to export your mix. You can choose:
                     </p>
