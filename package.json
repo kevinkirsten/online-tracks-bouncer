@@ -12,6 +12,7 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "@soundtouchjs/audio-worklet": "^2.0.1",
     "gh-pages": "^6.3.0",
     "lucide-react": "^0.562.0",

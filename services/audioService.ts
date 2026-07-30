@@ -1,69 +1,9 @@
 import { AudioTrack } from '../types';
 import { renderPitched } from './pitchService';
+import type { Mp3Request, Mp3Response } from './mp3.worker';
 
-// lamejs is loaded via <script> tag in index.html for the main thread, 
-// but for the worker we need to import it explicitly inside the worker scope.
-declare const lamejs: any;
-
-// --- WORKER CODE AS STRING ---
-// We use a Blob Worker to avoid needing a separate file/bundler configuration.
-// This worker runs the encoding in a separate thread at full CPU speed.
-const WORKER_CODE = `
-importScripts('https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js');
-
-self.onmessage = function(e) {
-  const { channels, sampleRate, samplesL, samplesR } = e.data;
-  
-  if (typeof lamejs === 'undefined') {
-    self.postMessage({ error: 'Failed to load lamejs in worker' });
-    return;
-  }
-
-  try {
-    const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 320);
-    const mp3Data = [];
-    const sampleBlockSize = 1152;
-    
-    // Convert Float32 to Int16
-    // We do this inside the worker to keep the main thread completely free
-    const length = samplesL.length;
-    const samplesL_int16 = new Int16Array(length);
-    const samplesR_int16 = new Int16Array(length);
-
-    for (let i = 0; i < length; i++) {
-      // Left
-      let valL = Math.max(-1, Math.min(1, samplesL[i]));
-      samplesL_int16[i] = valL < 0 ? valL * 0x8000 : valL * 0x7FFF;
-      
-      // Right
-      let valR = samplesR ? Math.max(-1, Math.min(1, samplesR[i])) : valL;
-      samplesR_int16[i] = valR < 0 ? valR * 0x8000 : valR * 0x7FFF;
-    }
-
-    // Encode Loop (Tight loop, no timeouts needed here!)
-    for (let i = 0; i < length; i += sampleBlockSize) {
-      const chunkL = samplesL_int16.subarray(i, i + sampleBlockSize);
-      const chunkR = samplesR_int16.subarray(i, i + sampleBlockSize);
-      const mp3buf = mp3encoder.encodeBuffer(chunkL, chunkR);
-      if (mp3buf.length > 0) {
-        mp3Data.push(mp3buf);
-      }
-    }
-
-    const mp3buf = mp3encoder.flush();
-    if (mp3buf.length > 0) {
-      mp3Data.push(mp3buf);
-    }
-
-    // Send back the Blob
-    const blob = new Blob(mp3Data, { type: 'audio/mp3' });
-    self.postMessage({ blob });
-    
-  } catch (err) {
-    self.postMessage({ error: err.message });
-  }
-};
-`;
+/** Constant bitrate used for MP3 exports, in kbps. */
+const MP3_BITRATE = 320;
 
 // Helper to convert an AudioBuffer to a WAV Blob
 export function audioBufferToWav(buffer: AudioBuffer, opt?: any): Blob {
@@ -82,46 +22,37 @@ export function audioBufferToWav(buffer: AudioBuffer, opt?: any): Blob {
   return encodeWAV(result, format, sampleRate, numChannels, bitDepth);
 }
 
-// Optimized Helper to convert AudioBuffer to MP3 Blob using a Web Worker
+/** Encode an AudioBuffer to MP3 in a worker, so the UI stays responsive. */
 async function audioBufferToMp3(buffer: AudioBuffer): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    // Create Worker from string
-    const blob = new Blob([WORKER_CODE], { type: 'application/javascript' });
-    const workerUrl = URL.createObjectURL(blob);
-    const worker = new Worker(workerUrl);
+    const worker = new Worker(new URL('./mp3.worker.ts', import.meta.url), { type: 'module' });
 
-    // Prepare data. Copy before transferring — transferring the channel data
-    // directly would detach the AudioBuffer's own storage.
+    // Copy before transferring — handing over the channel data directly would
+    // detach the AudioBuffer's own storage.
     const channels = buffer.numberOfChannels;
-    const sampleRate = buffer.sampleRate;
     const samplesL = new Float32Array(buffer.getChannelData(0));
-    const samplesR = channels > 1 ? new Float32Array(buffer.getChannelData(1)) : new Float32Array(samplesL);
+    const samplesR = channels > 1 ? new Float32Array(buffer.getChannelData(1)) : new Float32Array(0);
 
-    worker.onmessage = (e) => {
-      if (e.data.error) {
-        reject(new Error(e.data.error));
-      } else if (e.data.blob) {
-        resolve(e.data.blob);
-      }
-      worker.terminate(); // Cleanup
-      URL.revokeObjectURL(workerUrl); // Cleanup URL
+    worker.onmessage = (e: MessageEvent<Mp3Response>) => {
+      worker.terminate();
+      if (e.data.error) reject(new Error(e.data.error));
+      else if (e.data.blob) resolve(e.data.blob);
+      else reject(new Error('MP3 encoder returned no data'));
     };
 
     worker.onerror = (e) => {
-      reject(new Error("Worker error: " + e.message));
       worker.terminate();
-      URL.revokeObjectURL(workerUrl);
+      reject(new Error(`MP3 worker error: ${e.message}`));
     };
 
-    // Send data to worker
-    // We use the second argument [transferList] to transfer ownership of the buffers
-    // This makes sending the data instantaneous (zero-copy)
-    worker.postMessage({
+    const req: Mp3Request = {
       channels,
-      sampleRate,
-      samplesL, // These will be transferred
-      samplesR  // These will be transferred
-    }, [samplesL.buffer, samplesR.buffer]); // Transfer buffer ownership
+      sampleRate: buffer.sampleRate,
+      samplesL,
+      samplesR,
+      kbps: MP3_BITRATE,
+    };
+    worker.postMessage(req, [samplesL.buffer, samplesR.buffer]);
   });
 }
 
