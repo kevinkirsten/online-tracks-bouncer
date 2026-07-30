@@ -12,6 +12,7 @@ import { bounceTracks, estimateFileSize } from './services/audioService';
 import { HelpModal } from './components/HelpModal';
 import { ClickTrackModal } from './components/ClickTrackModal';
 import { Transposer, Note } from './components/Transposer';
+import { GitHubCorner, CORNER_SIZE } from './components/GitHubCorner';
 import { generateClickBuffer, clickTrackName, ClickSignature, CLICK_BASES } from './services/clickService';
 import { AudioEngine } from './services/audioEngine';
 import { renderPitched, invalidatePitchCache, clearPitchCache } from './services/pitchService';
@@ -805,7 +806,11 @@ const App: React.FC = () => {
         <div className="flex-shrink-0 flex flex-col z-50">
           <GlobalTimeline tracks={tracks} duration={duration} engine={engine} onSeek={handleSeek} />
 
-          <footer className="h-10 bg-daw-panel border-t border-daw-border px-4 flex items-center gap-3">
+          {/* Left padding clears the GitHub corner so the timecode stays visible. */}
+          <footer
+            className="h-10 bg-daw-panel border-t border-daw-border pr-4 flex items-center gap-3"
+            style={{ paddingLeft: CORNER_SIZE + 8 }}
+          >
             <span
               onClick={() => setShowRemaining(!showRemaining)}
               className="text-xs font-mono text-daw-muted min-w-[50px] cursor-pointer hover:text-white select-none"
@@ -826,6 +831,8 @@ const App: React.FC = () => {
           </footer>
         </div>
       )}
+
+      <GitHubCorner href="https://github.com/kevinkirsten/online-tracks-bouncer" />
     </div>
   );
 };

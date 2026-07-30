@@ -39,8 +39,9 @@ npm run build && npm run preview
 
 ## How playback works
 
-All tracks play from `AudioBufferSourceNode`s scheduled against a single shared
-anchor in one `AudioContext` (`services/audioEngine.ts`). Because every source
+Every track plays from its own `AudioBufferSourceNode`, and all of them are
+scheduled against a single shared anchor in one `AudioContext`
+(`services/audioEngine.ts`). Because every source
 starts at the same absolute `when`, they are locked together by the audio clock
 and cannot drift — no matter how many play/pause/seek cycles happen. Waveforms
 are plain canvases fed by a worker-computed envelope, and the playhead is driven
