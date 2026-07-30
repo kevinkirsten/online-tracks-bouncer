@@ -11,6 +11,32 @@ Free online multitrack audio mixer. Bounce stems, merge WAV/MP3 files, generate 
 2. Run the app:
    `npm run dev`
 
+## Deploy
+
+The live site is <https://kevinkirsten.github.io/online-tracks-bouncer/>.
+
+There is no CI here — pushing does **not** update the site. Publishing is a
+separate, manual step:
+
+```sh
+git push        # updates the source on `main` only
+npm run deploy  # builds and publishes the site
+```
+
+`npm run deploy` runs `vite build` first (via the `predeploy` script — you do not
+need to build by hand) and then force-pushes the contents of `dist/` to the
+`gh-pages` branch, which is what GitHub Pages serves. Give it a minute or two to
+go live, and hard-refresh (`Cmd+Shift+R`) if you still see the old version.
+
+Run it from a clean tree: `gh-pages` publishes whatever `vite build` just
+produced, so uncommitted local changes would go live too.
+
+To check the production build before publishing:
+
+```sh
+npm run build && npm run preview
+```
+
 ## How playback works
 
 All tracks play from `AudioBufferSourceNode`s scheduled against a single shared
