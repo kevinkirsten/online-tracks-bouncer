@@ -9,7 +9,11 @@ export const DEFAULT_TRACK_VOLUME = 0.8;
 interface TrackRowProps {
   track: AudioTrack;
   engine: AudioEngine;
-  timelineDuration: number;
+  viewStart: number;
+  viewDuration: number;
+  onZoom: (factor: number, anchorS: number) => void;
+  onPan: (deltaS: number) => void;
+  onClickDrag: (track: AudioTrack, deltaS: number) => void;
   onVolumeChange: (id: string, volume: number) => void;
   onMuteToggle: (id: string) => void;
   onSoloToggle: (id: string) => void;
@@ -40,7 +44,11 @@ const getDbValue = (vol: number) => {
 export const TrackRow = memo<TrackRowProps>(({
   track,
   engine,
-  timelineDuration,
+  viewStart,
+  viewDuration,
+  onZoom,
+  onPan,
+  onClickDrag,
   onVolumeChange,
   onMuteToggle,
   onSoloToggle,
@@ -60,6 +68,8 @@ export const TrackRow = memo<TrackRowProps>(({
 
   const isLoaded = track.status === 'ready';
   const offsetMs = track.clickMeta?.offsetMs ?? 0;
+  /** Only generated clicks can be slid around — they can be re-rendered. */
+  const isClickWithGrid = !!(track.isClick && track.clickMeta && isLoaded);
 
   // Keep the dB readout in sync when volume changes from elsewhere.
   useEffect(() => {
@@ -243,13 +253,20 @@ export const TrackRow = memo<TrackRowProps>(({
         <div className="absolute inset-0 flex items-center">
           <Waveform
             peaks={track.peaks}
+            buffer={track.audioBuffer}
             duration={track.duration}
-            timelineDuration={timelineDuration}
+            viewStart={viewStart}
+            viewDuration={viewDuration}
             engine={engine}
             color={track.isClick ? '#b45309' : '#646cff'}
             progressColor={track.isClick ? '#fbbf24' : '#a6acff'}
             height={80}
             onSeek={onSeek}
+            onZoom={onZoom}
+            onPan={onPan}
+            // Generated clicks are draggable so the grid can be nudged by hand.
+            draggable={isClickWithGrid}
+            onDragEnd={(deltaS) => onClickDrag(track, deltaS)}
           />
         </div>
 

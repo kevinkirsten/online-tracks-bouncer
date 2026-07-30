@@ -7,6 +7,9 @@ interface GlobalTimelineProps {
   duration: number;
   engine: AudioEngine;
   onSeek: (time: number) => void;
+  /** Window currently shown in the track lanes, highlighted here as a navigator. */
+  viewStart: number;
+  viewDuration: number;
 }
 
 const HEIGHT = 64;
@@ -34,7 +37,14 @@ const formatTick = (s: number) => {
  * worker, so this redraws instantly instead of walking raw sample data on the
  * main thread on every change.
  */
-export const GlobalTimeline: React.FC<GlobalTimelineProps> = ({ tracks, duration, engine, onSeek }) => {
+export const GlobalTimeline: React.FC<GlobalTimelineProps> = ({
+  tracks,
+  duration,
+  engine,
+  onSeek,
+  viewStart,
+  viewDuration,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const offscreenRef = useRef<HTMLCanvasElement | null>(null);
@@ -129,10 +139,23 @@ export const GlobalTimeline: React.FC<GlobalTimelineProps> = ({ tracks, duration
       ctx.fillRect(0, 0, x, HEIGHT);
       ctx.restore();
 
+      // Dim everything outside the zoomed window and outline what is on screen.
+      const zoomed = viewDuration > 0 && viewDuration < duration - 1e-6;
+      if (zoomed) {
+        const vx = (viewStart / duration) * w;
+        const vw = Math.max(2, (viewDuration / duration) * w);
+        ctx.fillStyle = 'rgba(18,18,20,0.62)';
+        ctx.fillRect(0, 0, vx, HEIGHT);
+        ctx.fillRect(vx + vw, 0, w - vx - vw, HEIGHT);
+        ctx.strokeStyle = 'rgba(236,236,241,0.5)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(vx + 0.5, 0.5, vw - 1, HEIGHT - 1);
+      }
+
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(x - 1, 0, 2, HEIGHT);
     },
-    [duration],
+    [duration, viewStart, viewDuration],
   );
 
   useEffect(() => {

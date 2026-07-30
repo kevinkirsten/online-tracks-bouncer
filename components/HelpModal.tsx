@@ -108,6 +108,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                     <h3 className="font-bold text-daw-text mb-1">4. Playback & Navigation</h3>
                     <ul className="text-sm text-daw-muted space-y-2 list-disc pl-4">
                         <li>Click or drag on any <strong>waveform</strong>, or on the bottom <strong>Global Timeline</strong>, to jump to that spot. Every track follows in sample-accurate sync.</li>
+                        <li><strong className="text-daw-text">Zoom in horizontally</strong> with <strong>Ctrl/⌘ + scroll</strong> over a waveform (or pinch on a trackpad), or with the zoom buttons at the bottom-right. Zoomed in, the waveform is drawn from the real samples, so you can line things up to the millisecond.</li>
+                        <li><strong>Pan</strong> by scrolling sideways, or just click on the Global Timeline — the zoomed window follows you. The lit rectangle down there shows which slice you are looking at.</li>
                         <li>Click the <strong>Timer</strong> in the bottom-left corner to toggle between <em>Elapsed Time</em> and <em>Remaining Time</em>.</li>
                     </ul>
                     <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
@@ -117,6 +119,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                             ['Enter', 'Stop'],
                             ['← / →', 'Nudge 5 seconds'],
                             ['Shift + ← / →', 'Nudge 1 second'],
+                            ['+ / −', 'Zoom in / out'],
+                            ['0', 'Fit whole session'],
                         ].map(([key, label]) => (
                             <div key={key} className="flex items-center gap-2">
                                 <kbd className="bg-daw-bg border border-daw-border rounded px-1.5 py-0.5 font-mono text-[10px] text-daw-text whitespace-nowrap">{key}</kbd>
@@ -137,7 +141,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                     <ul className="text-sm text-daw-muted space-y-2 list-disc pl-4">
                         <li><strong className="text-daw-text">Add click track</strong> generates a metronome for the whole session. Hit <strong>Detect tempo from tracks</strong> and it analyses your stems to find the BPM and where beat 1 lands.</li>
                         <li>If the detected tempo feels half or double speed, use the <strong className="font-mono">÷2</strong> / <strong className="font-mono">×2</strong> buttons.</li>
-                        <li>Fine-tune the click with the <strong>offset</strong> field on the track itself — it updates instantly, even while playing.</li>
+                        <li><strong className="text-daw-text">Drag the click track sideways</strong> to slide it onto the beat. Zoom in first and you can see it snap onto the transients; the exact shift in milliseconds shows while you drag. The <strong>offset</strong> buttons and field on the track do the same thing by the number.</li>
                         <li>The <strong>Key / semitone</strong> control at the top transposes everything without changing the tempo. Tracks flagged with <Drum size={11} className="inline mx-0.5" /> are left alone, so your click keeps hitting exactly where it did.</li>
                     </ul>
                 </div>

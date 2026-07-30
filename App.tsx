@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { v4 as uuidv4 } from 'uuid';
 import {
   Upload, Play, Pause, Download, Music, Square, Trash2, Plus, ChevronDown,
-  FileAudio, CircleHelp, Drum, SkipBack, Loader2, AlertTriangle,
+  FileAudio, CircleHelp, Drum, SkipBack, Loader2, AlertTriangle, ZoomIn, ZoomOut, Maximize2,
 } from 'lucide-react';
 import { AudioTrack } from './types';
 import { TrackRow, DEFAULT_TRACK_VOLUME } from './components/TrackRow';
@@ -20,6 +20,20 @@ import { computePeaks, detectTempo, TempoResult } from './services/analysisServi
 
 /** A track contributes to the mix unless something else is soloed. */
 const isAudible = (track: AudioTrack, anySolo: boolean) => (anySolo ? !!track.isSolo : !track.isMuted);
+
+/** Shortest window the timeline can zoom to, in seconds. */
+const MIN_VIEW_S = 0.1;
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, hi));
+
+/**
+ * Visible span of the timeline. `duration: 0` means "fit the whole session",
+ * which keeps the view correct as tracks are added or removed.
+ */
+interface View {
+  start: number;
+  duration: number;
+}
 
 const formatTime = (seconds: number) => {
   const safe = Math.max(0, seconds);
@@ -62,6 +76,58 @@ const App: React.FC = () => {
   const tracksRef = useRef(tracks);
   tracksRef.current = tracks;
 
+  // ---------------------------------------------------------- timeline view
+
+  const [view, setView] = useState<View>({ start: 0, duration: 0 });
+  const durationRef = useRef(0);
+  durationRef.current = duration;
+  const viewRef = useRef(view);
+  viewRef.current = view;
+
+  // Resolved window, always legal for the current session length.
+  const viewDuration = view.duration > 0 ? Math.min(view.duration, duration || 1) : duration || 1;
+  const viewStart = view.duration > 0 ? clamp(view.start, 0, Math.max(0, duration - viewDuration)) : 0;
+  const isZoomed = view.duration > 0 && duration > 0 && viewDuration < duration - 1e-6;
+
+  const zoomAt = useCallback((factor: number, anchorS: number) => {
+    setView((prev) => {
+      const total = durationRef.current;
+      if (total <= 0) return prev;
+      const curDur = prev.duration > 0 ? Math.min(prev.duration, total) : total;
+      const curStart = prev.duration > 0 ? prev.start : 0;
+      const nextDur = clamp(curDur * factor, MIN_VIEW_S, total);
+      if (nextDur >= total) return { start: 0, duration: 0 }; // back to fit
+      // Keep whatever is under the cursor pinned to the same screen position.
+      const frac = curDur > 0 ? (anchorS - curStart) / curDur : 0.5;
+      return { start: clamp(anchorS - frac * nextDur, 0, total - nextDur), duration: nextDur };
+    });
+  }, []);
+
+  const panBy = useCallback((deltaS: number) => {
+    setView((prev) => {
+      const total = durationRef.current;
+      if (prev.duration <= 0 || total <= 0) return prev;
+      const dur = Math.min(prev.duration, total);
+      return { start: clamp(prev.start + deltaS, 0, total - dur), duration: dur };
+    });
+  }, []);
+
+  const fitView = useCallback(() => setView({ start: 0, duration: 0 }), []);
+
+  /** Zoom by a fixed step, anchored on the playhead when it is on screen. */
+  const zoomStep = useCallback(
+    (factor: number) => {
+      const v = viewRef.current;
+      const total = durationRef.current;
+      const dur = v.duration > 0 ? Math.min(v.duration, total) : total;
+      const start = v.duration > 0 ? v.start : 0;
+      const playhead = engine.getCurrentTime();
+      const anchor = playhead >= start && playhead <= start + dur ? playhead : start + dur / 2;
+      zoomAt(factor, anchor);
+    },
+    [engine, zoomAt],
+  );
+
   /**
    * Identity of the set of tracks that the pitch shifter applies to. Used as an
    * effect dependency so re-rendering pitch is triggered by tracks appearing or
@@ -90,6 +156,16 @@ const App: React.FC = () => {
       if (tick !== lastPublished) {
         lastPublished = tick;
         setCurrentTime(s.time);
+      }
+
+      // While zoomed in, page the window along so the playhead stays visible.
+      const v = viewRef.current;
+      if (s.isPlaying && v.duration > 0 && (s.time < v.start || s.time > v.start + v.duration)) {
+        const total = durationRef.current;
+        setView((prev) => ({
+          ...prev,
+          start: clamp(s.time - prev.duration * 0.1, 0, Math.max(0, total - prev.duration)),
+        }));
       }
     });
   }, [engine]);
@@ -120,6 +196,17 @@ const App: React.FC = () => {
   const handleSeek = useCallback(
     (time: number) => {
       engine.seek(time);
+      // Seeking outside the zoomed window brings the window along, which makes
+      // the overview strip at the bottom double as a navigator.
+      setView((prev) => {
+        if (prev.duration <= 0) return prev;
+        if (time >= prev.start && time <= prev.start + prev.duration) return prev;
+        const total = durationRef.current;
+        return {
+          ...prev,
+          start: clamp(time - prev.duration / 2, 0, Math.max(0, total - prev.duration)),
+        };
+      });
     },
     [engine],
   );
@@ -322,6 +409,16 @@ const App: React.FC = () => {
     [engine, regenerateClick],
   );
 
+  /** Dragging a click track's waveform slides its grid by that many seconds. */
+  const handleClickDrag = useCallback(
+    (track: AudioTrack, deltaS: number) => {
+      if (!track.clickMeta || deltaS === 0) return;
+      const next = Math.round(track.clickMeta.offsetMs + deltaS * 1000);
+      void regenerateClick(track, next, track.duration || engine.duration);
+    },
+    [engine, regenerateClick],
+  );
+
   // Adding a longer stem after the click was generated used to leave the click
   // ending early. Stretch it to cover the session instead.
   useEffect(() => {
@@ -451,18 +548,43 @@ const App: React.FC = () => {
   }, []);
 
   // Keyboard transport. Refs keep the listener stable so it is registered once.
-  const shortcutsRef = useRef({ togglePlay, handleStop, engine, blocked: false });
-  shortcutsRef.current = { togglePlay, handleStop, engine, blocked: isHelpOpen || isClickModalOpen };
+  const shortcutsRef = useRef({ togglePlay, handleStop, engine, zoomStep, fitView, blocked: false });
+  shortcutsRef.current = {
+    togglePlay,
+    handleStop,
+    engine,
+    zoomStep,
+    fitView,
+    blocked: isHelpOpen || isClickModalOpen,
+  };
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      const { togglePlay, handleStop, engine, blocked } = shortcutsRef.current;
+      const { togglePlay, handleStop, engine, zoomStep, fitView, blocked } = shortcutsRef.current;
       if (blocked || e.metaKey || e.ctrlKey || e.altKey) return;
 
       const target = e.target as HTMLElement | null;
       if (target) {
         const tag = target.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return;
+      }
+
+      // Zoom is matched on the produced character rather than the physical key,
+      // so it works on any layout (ABNT, numpad, Shift+= for '+').
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        zoomStep(0.5);
+        return;
+      }
+      if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        zoomStep(2);
+        return;
+      }
+      if (e.key === '0') {
+        e.preventDefault();
+        fitView();
+        return;
       }
 
       switch (e.code) {
@@ -742,7 +864,11 @@ const App: React.FC = () => {
                     key={track.id}
                     track={track}
                     engine={engine}
-                    timelineDuration={duration}
+                    viewStart={viewStart}
+                    viewDuration={viewDuration}
+                    onZoom={zoomAt}
+                    onPan={panBy}
+                    onClickDrag={handleClickDrag}
                     onVolumeChange={handleVolumeChange}
                     onMuteToggle={handleMuteToggle}
                     onSoloToggle={handleSoloToggle}
@@ -804,7 +930,14 @@ const App: React.FC = () => {
 
       {tracks.length > 0 && (
         <div className="flex-shrink-0 flex flex-col z-50">
-          <GlobalTimeline tracks={tracks} duration={duration} engine={engine} onSeek={handleSeek} />
+          <GlobalTimeline
+            tracks={tracks}
+            duration={duration}
+            engine={engine}
+            onSeek={handleSeek}
+            viewStart={viewStart}
+            viewDuration={viewDuration}
+          />
 
           {/* Left padding clears the GitHub corner so the timecode stays visible. */}
           <footer
@@ -828,6 +961,38 @@ const App: React.FC = () => {
               className="flex-1 h-1.5 bg-daw-bg rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-daw-accent [&::-webkit-slider-thumb]:rounded-full hover:[&::-webkit-slider-thumb]:scale-125 transition-all"
             />
             <span className="text-xs font-mono text-daw-muted">{formatTime(duration)}</span>
+
+            <div className="flex items-center gap-1 border-l border-daw-border pl-3 ml-1">
+              <button
+                onClick={() => zoomStep(2)}
+                disabled={!isZoomed}
+                title="Zoom out (Ctrl/⌘ + scroll on a waveform)"
+                className="p-1 rounded text-daw-muted hover:text-white hover:bg-daw-bg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ZoomOut size={14} />
+              </button>
+              <button
+                onClick={() => zoomStep(0.5)}
+                title="Zoom in (Ctrl/⌘ + scroll on a waveform)"
+                className="p-1 rounded text-daw-muted hover:text-white hover:bg-daw-bg transition-colors"
+              >
+                <ZoomIn size={14} />
+              </button>
+              <button
+                onClick={fitView}
+                disabled={!isZoomed}
+                title="Fit the whole session"
+                className="p-1 rounded text-daw-muted hover:text-white hover:bg-daw-bg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <Maximize2 size={13} />
+              </button>
+              <span
+                className={`text-[10px] font-mono w-16 text-right ${isZoomed ? 'text-daw-accent' : 'text-daw-muted/60'}`}
+                title="Visible span"
+              >
+                {viewDuration < 1 ? `${Math.round(viewDuration * 1000)} ms` : `${viewDuration.toFixed(1)} s`}
+              </span>
+            </div>
           </footer>
         </div>
       )}

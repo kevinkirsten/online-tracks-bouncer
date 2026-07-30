@@ -14,6 +14,20 @@
   --color-daw-muted: #8b8b99;
 }
 
+/*
+ * Tailwind v4's Preflight drops the `cursor: pointer` that v3 gave buttons,
+ * leaving every control with an arrow cursor and nothing looking clickable.
+ * Restore it for real controls, but not for disabled ones.
+ */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not(:disabled),
+  summary,
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
 /* Custom scrollbar for a DAW-like feel (cross-browser) */
 :root {
   scrollbar-width: thin;
